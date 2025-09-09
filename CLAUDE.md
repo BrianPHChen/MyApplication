@@ -109,62 +109,131 @@ TaskRepository (interface → implementation via @Binds)
 
 ## Unit Testing Strategy
 
-This project follows a layered testing approach that aligns with Clean Architecture principles:
+This project follows a Clean Architecture layered testing approach with Room database integration:
 
-### Testing Philosophy
-- **Separation of Concerns**: Each layer tests different responsibilities
-- **Repository Layer**: Tests business logic implementation and data operations
-- **ViewModel Layer**: Tests presentation logic and integration with domain layer
+### Testing Architecture Overview
+```
+┌─────────────────────────────────────┐
+│ Presentation Layer (UI Logic)       │
+│ - TaskListViewModel                 │
+│ └─ Mock Repository 驗證方法調用      │
+├─────────────────────────────────────┤
+│ Domain Layer (Business Rules)       │
+│ - Task Model                        │
+│ └─ 簡單 Data Class，通常不需測試     │
+├─────────────────────────────────────┤
+│ Data Layer (Data Access)            │
+│ - TaskRepositoryImpl                │
+│ └─ Mock DAO 驗證資料轉換和方法調用    │
+├─────────────────────────────────────┤
+│ Local Data (Database)               │
+│ - TaskDao                           │
+│ └─ Room In-Memory DB 測試真實查詢    │
+└─────────────────────────────────────┘
+```
 
-### Repository Testing (`TaskRepositoryImplTest`)
-**Purpose**: Test business logic and data operations using real implementations
+### Testing Strategy by Layer
+
+### 1. DAO Layer Testing (`TaskDaoTest`)
+**Purpose**: Test real database operations and SQL queries
+
+**Testing Approach**: Integration Testing with Room In-Memory Database
 
 **What to Test**:
-- Business logic implementation (add, update, delete, toggle operations)
-- Data transformations and state management
-- StateFlow behavior and emissions
-- Edge cases and error scenarios
-- Data integrity across multiple operations
+- Real CRUD operations against SQLite database
+- SQL query correctness and performance
+- Flow emission behavior from database changes
+- Data integrity and constraints
+- Complex query scenarios
 
 **Testing Tools**:
-- **Real Implementation**: `TaskRepositoryImpl()` - test actual business logic
+- **Room In-Memory Database**: Real database instance for testing
 - **Turbine**: `.test { awaitItem() }` - for Flow testing
+- **AndroidJUnit4**: Android test runner
 - **runTest**: Coroutine testing environment
-- **Assertions**: Verify state changes and data correctness
 
 **Example Pattern**:
 ```kotlin
-@Test
-fun `addTask should add new task to list`() = runTest {
-    // Given
-    val newTask = TestData.createTask()
+@RunWith(AndroidJUnit4::class)
+class TaskDaoTest {
     
-    // When
-    repository.addTask(newTask)
+    @get:Rule
+    val instantExecutorRule = InstantTaskExecutorRule()
     
-    // Then
-    repository.getAllTasks().test {
-        val tasks = awaitItem()
-        assertEquals(expectedSize, tasks.size)
-        assertEquals(newTask, tasks.find { it.id == newTask.id })
-        cancelAndIgnoreRemainingEvents()
+    private lateinit var database: TaskDatabase
+    private lateinit var taskDao: TaskDao
+    
+    @Before
+    fun createDb() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        database = Room.inMemoryDatabaseBuilder(context, TaskDatabase::class.java).build()
+        taskDao = database.taskDao()
+    }
+    
+    @Test
+    fun insertTask_and_getAllTasks() = runTest {
+        // Test real database operations
     }
 }
 ```
 
-### ViewModel Testing (`TaskListViewModelTest`)
+### 2. Repository Layer Testing (`TaskRepositoryImplTest`)
+**Purpose**: Test data layer integration and Entity ↔ Domain transformations
+
+**Testing Approach**: Unit Testing with Mocked DAO
+
+**What to Test**:
+- Entity to Domain Model mapping (`toDomain()`)
+- Domain to Entity Model mapping (`toEntity()`) 
+- DAO method delegation and parameter passing
+- Flow transformation from Entity to Domain
+- Error handling and edge cases
+
+**Testing Tools**:
+- **MockK**: `mockk(relaxed = true)` - for DAO mocking
+- **coEvery/coVerify**: Mock suspend function behavior
+- **Turbine**: Flow testing with transformations
+- **runTest**: Coroutine testing environment
+
+**Example Pattern**:
+```kotlin
+class TaskRepositoryImplTest {
+    
+    private val mockTaskDao = mockk<TaskDao>(relaxed = true)
+    private lateinit var repository: TaskRepositoryImpl
+    
+    @Before
+    fun setUp() {
+        repository = TaskRepositoryImpl(mockTaskDao)
+    }
+    
+    @Test
+    fun `addTask should call DAO insertTask with correct entity`() = runTest {
+        // Test method delegation and data transformation
+        val domainTask = TestData.createTask()
+        
+        repository.addTask(domainTask)
+        
+        coVerify(exactly = 1) { 
+            mockTaskDao.insertTask(domainTask.toEntity()) 
+        }
+    }
+}
+```
+
+### 3. ViewModel Layer Testing (`TaskListViewModelTest`)
 **Purpose**: Test presentation layer integration and method delegation
 
 **What to Test**:
 - **Method Delegation**: Verify ViewModel correctly calls Repository methods
 - **Parameter Passing**: Ensure correct parameters are passed to Repository
+- **StateFlow Setup**: Confirm StateFlow initialization from Repository
 - **Coroutine Integration**: Verify suspend function calls work correctly
-- **State Initialization**: Confirm StateFlow setup from Repository
 
 **What NOT to Test**:
 - Business logic implementation (that's Repository's responsibility)
-- State transformations (Repository handles this)
-- Data correctness (Repository tests cover this)
+- Data transformations (Repository handles this)
+- Database operations (DAO tests cover this)
 
 **Testing Tools**:
 - **MockK**: `mockk(relaxed = true)` - for Repository mocking
@@ -174,46 +243,83 @@ fun `addTask should add new task to list`() = runTest {
 
 **Example Pattern**:
 ```kotlin
-@Test
-fun `addTask應該調用Repository的addTask方法`() = runTest {
-    // Given
-    val testTask = TestData.createTask()
+@OptIn(ExperimentalCoroutinesApi::class)
+class TaskListViewModelTest {
     
-    // When
-    viewModel.addTask(testTask)
-    advanceUntilIdle()
+    @get:Rule
+    val instantExecutorRule = InstantTaskExecutorRule()
     
-    // Then - 驗證Repository方法被調用
-    coVerify(exactly = 1) { mockRepository.addTask(testTask) }
+    private val testDispatcher = StandardTestDispatcher()
+    private lateinit var mockRepository: TaskRepository
+    private lateinit var viewModel: TaskListViewModel
+    
+    @Test
+    fun `addTask應該調用Repository的addTask方法`() = runTest {
+        // Test UI logic and method delegation only
+    }
 }
 ```
 
 ### Testing Dependencies
 ```kotlin
 // Unit Testing
-testImplementation("junit:junit:4.13.2")
-testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
-testImplementation("androidx.arch.core:core-testing:2.2.0")
-testImplementation("io.mockk:mockk:1.13.8")
-testImplementation("io.mockk:mockk-android:1.13.8")
-testImplementation("app.cash.turbine:turbine:1.0.0")
-testImplementation("org.jetbrains.kotlin:kotlin-test:1.9.10")
+testImplementation(libs.junit)
+testImplementation(libs.kotlin.test)
+testImplementation(libs.kotlinx.coroutines.test)
+testImplementation(libs.androidx.core.testing)
+testImplementation(libs.mockk)
+testImplementation(libs.mockk.android)
+testImplementation(libs.turbine)
+testImplementation(libs.androidx.room.testing)
+
+// Android Instrumentation Testing (for DAO tests)
+androidTestImplementation(libs.androidx.junit)
+androidTestImplementation(libs.androidx.espresso.core)
+```
+
+### Testing File Structure
+```
+src/
+├── test/                           # Unit Tests
+│   ├── java/com/example/myapplication/
+│   │   ├── data/repository/
+│   │   │   └── TaskRepositoryImplTest.kt    # Mock DAO tests
+│   │   ├── presentation/tasks/list/
+│   │   │   └── TaskListViewModelTest.kt     # Mock Repository tests
+│   │   └── testutil/
+│   │       ├── TestData.kt                  # Test data factory
+│   │       └── TestDatabase.kt              # Test database utilities
+│   └── 
+├── androidTest/                    # Integration Tests  
+│   └── java/com/example/myapplication/
+│       └── data/local/dao/
+│           └── TaskDaoTest.kt               # Room In-Memory DB tests
+└── 
 ```
 
 ### Key Testing Utilities
 
-#### Test Data (`testutil/TestData.kt`)
-- Centralized test data creation
-- Consistent test scenarios across test classes
-- Factory methods for creating test entities
+#### Test Data Factory (`testutil/TestData.kt`)
+- Centralized test data creation for both Entity and Domain models
+- Consistent test scenarios across all test layers
+- Factory methods for creating test data
+
+#### Test Database Factory (`testutil/TestDatabase.kt`)
+- Reusable In-Memory database setup for DAO tests
+- Consistent database configuration across tests
 
 #### Fake Repository (`testutil/FakeTaskRepository.kt`)
-- **Use Case**: Integration tests or complex business logic scenarios
-- **Not Recommended For**: ViewModel testing (use Mocks instead)
+- **Deprecated**: No longer recommended with Room integration
+- Use Mock DAO in Repository tests instead
 
 ### Testing Best Practices
-1. **Layer Separation**: Don't test business logic in ViewModel tests
-2. **Mock Strategy**: Use Mocks for ViewModel, Real implementations for Repository
+
+1. **Layer Separation**: Each layer tests only its own responsibilities
+2. **Mock Strategy**: 
+   - DAO tests: Real Room In-Memory Database
+   - Repository tests: Mock DAO
+   - ViewModel tests: Mock Repository
 3. **Flow Testing**: Always use `cancelAndIgnoreRemainingEvents()` after `awaitItem()`
 4. **Coroutine Testing**: Use `advanceUntilIdle()` for suspend function completion
-5. **Test Naming**: Use descriptive names in Chinese/English that explain expected behavior
+5. **Test Naming**: Use descriptive names that explain expected behavior
+6. **Data Transformation Testing**: Verify Entity ↔ Domain mapping correctness
