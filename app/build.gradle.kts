@@ -18,7 +18,7 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = "com.example.myapplication.CustomTestRunner"
     }
 
     buildTypes {
@@ -61,6 +61,9 @@ dependencies {
     implementation(libs.hilt.android)
     implementation(libs.androidx.hilt.navigation.compose)
     ksp(libs.hilt.compiler)
+    
+    // Navigation
+    implementation(libs.androidx.navigation.compose)
     
     // Room Database
     implementation(libs.androidx.room.runtime)

@@ -12,12 +12,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,15 +36,39 @@ import com.example.myapplication.domain.model.Task
 import com.example.myapplication.presentation.tasks.list.components.TaskItem
 import java.util.UUID
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TaskListScreen(
     modifier: Modifier = Modifier,
+    onTaskClick: (Task) -> Unit = {},
     viewModel: TaskListViewModel = hiltViewModel()
 ) {
     val tasks by viewModel.tasks.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }  // 🎯 對話框狀態
     
-    Box(modifier = modifier.fillMaxSize()) {
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                title = { Text("任務管理器") }
+            )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { showAddDialog = true }  // 🖱️ 點擊顯示對話框
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "添加任務"
+                )
+            }
+        }
+    ) { paddingValues ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
         if (tasks.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -63,6 +90,7 @@ fun TaskListScreen(
                 items(tasks) { task ->
                     TaskItem(
                         task = task,
+                        onTaskClick = { onTaskClick(task) },  // 🖱️ 點擊導航到詳細頁面
                         onToggleComplete = { taskId ->
                             viewModel.toggleTaskCompletion(taskId)  // 🔄 事件往上流到ViewModel
                         },
@@ -73,18 +101,6 @@ fun TaskListScreen(
                 }
             }
         }
-        
-        // 🎯 浮動操作按鈕
-        FloatingActionButton(
-            onClick = { showAddDialog = true },  // 🖱️ 點擊顯示對話框
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Add,
-                contentDescription = "添加任務"
-            )
         }
     }
     
@@ -92,7 +108,7 @@ fun TaskListScreen(
     if (showAddDialog) {
         AddTaskDialog(
             onDismiss = { showAddDialog = false },
-            onAddTask = { title, description ->
+            onAddTask = { title: String, description: String ->
                 val newTask = Task(
                     id = UUID.randomUUID().toString(),
                     title = title,
@@ -106,7 +122,7 @@ fun TaskListScreen(
 }
 
 @Composable
-private fun AddTaskDialog(
+fun AddTaskDialog(
     onDismiss: () -> Unit,
     onAddTask: (String, String) -> Unit
 ) {

@@ -27,6 +27,7 @@ import com.example.myapplication.domain.model.Task
 @Composable
 fun TaskItem(
     task: Task,
+    onTaskClick: () -> Unit = {},        // 🖱️ 點擊任務導航的事件
     onToggleComplete: (String) -> Unit,  // 🎯 切換完成狀態的事件
     onDelete: (String) -> Unit,          // 🗑️ 刪除任務的事件
     modifier: Modifier = Modifier
@@ -38,30 +39,34 @@ fun TaskItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onToggleComplete(task.id) }  // 🖱️ 點擊整個項目切換狀態
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { onTaskClick() },  // 🖱️ 點擊文字區域導航到詳細頁面
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 🔘 完成狀態圖標
-                Icon(
-                    imageVector = if (task.isCompleted) {
-                        Icons.Filled.CheckCircle
-                    } else {
-                        Icons.Outlined.CheckCircle
-                    },
-                    contentDescription = if (task.isCompleted) "已完成" else "未完成",
-                    tint = if (task.isCompleted) {
-                        Color(0xFF4CAF50)  // 綠色
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                    modifier = Modifier.padding(end = 12.dp)
-                )
+                // 🔘 完成狀態圖標 - 單獨處理點擊
+                IconButton(
+                    onClick = { onToggleComplete(task.id) }  // 🎯 點擊圖標切換狀態
+                ) {
+                    Icon(
+                        imageVector = if (task.isCompleted) {
+                            Icons.Filled.CheckCircle
+                        } else {
+                            Icons.Outlined.CheckCircle
+                        },
+                        contentDescription = if (task.isCompleted) "已完成" else "未完成",
+                        tint = if (task.isCompleted) {
+                            Color(0xFF4CAF50)  // 綠色
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                }
                 
                 Column {
                     Text(
